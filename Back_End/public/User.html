@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Create User</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      width: 620px;
+      margin: 40px auto;
+    }
+    label {
+      display: block;
+      margin-top: 12px;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 4px;
+    }
+    button {
+      margin-top: 16px;
+      padding: 10px 16px;
+      cursor: pointer;
+    }
+    pre {
+      margin-top: 20px;
+      background: #f4f4f4;
+      padding: 12px;
+      border: 1px solid #ccc;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Create User</h2>
+
+  <label>
+    Username
+    <input type="text" id="username" >
+  </label>
+
+  <label>
+    Email
+    <input type="email" id="email" >
+  </label>
+
+  <label>
+    Password
+    <input type="password" id="password" >
+  </label>
+
+  <button onclick="createUser()">Create User</button>
+
+  <h3>Server Response</h3>
+  <pre id="output">Fill the form and click "Create User"</pre>
+
+  <script>
+    const BASE_URL = 'http://localhost:8080';
+    const output = document.getElementById('output');
+
+    function createUser() {
+      const username = document.getElementById('username').value;
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      fetch(`${BASE_URL}/api/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, email, password })
+      })
+      .then(async res => {
+        const data = await res.json();
+        return `Status: ${res.status}\n\n${JSON.stringify(data, null, 2)}`;
+      })
+      .then(result => output.textContent = result)
+      .catch(err => output.textContent = err);
+    }
+  </script>
+
+</body>
+</html>

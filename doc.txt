@@ -1,0 +1,292 @@
+//login//
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./style.css">
+    <title>Notes App</title>
+</head>
+<body>
+    <div class="form">
+        <h2>Login</h2>
+        <input id="email" placeholder="Email" type="text">
+        <input id="pass" placeholder="Password" type="text">
+        <button onclick="login()">Login</button>
+        <p>Don't have an account?</p>
+        <a href="./register.html">Register</a>
+    </div>
+    
+    <script src="./script.js"></script>
+</body>
+</html>
+
+
+
+//register//
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./style.css">
+    <title>Notes App</title>
+</head>
+<body>
+    <div class="form">
+        <h2>Register</h2>
+        <input id="email" placeholder="Email" type="text">
+        <input id="pass" placeholder="Password" type="text">
+        <button type="submit" onclick="register()">Register</button>
+        <p>Already have an account?</p>
+        <a href="./index.html">Sign In</a>
+    </div>
+    
+
+    <script src="./script.js"></script>
+</body>
+</html>
+
+
+
+//dashboard//
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Notes</title>
+</head>
+<body>
+    <h2>Your Notes</h2>
+    <input type="text" id="notetext" placeholder="Write a note">
+    <button onclick="createNote()">Add Note</button>
+    <ul id="notes"></ul>
+
+    <script src="./script.js">
+        const token=localStorage.getItem("token");
+        if(!token){
+            alert("Please login first");
+            window.location = "./login.html";
+        }
+    </script>
+</body>
+</html>
+
+//script.js//
+const API="http://localhost:3000";
+
+async function register(){
+    const email=document.getElementById('email').value;
+    const password=document.getElementById('pass').value;
+    const res=await fetch(API+"/register",{
+        method:"POST",
+        headers:{
+            "Content-Type": "application/json"
+        },
+        body:JSON.stringify({email,password})
+    });
+    const data=await res.json();
+    if(!res.ok){
+        alert(data.message);
+        return;
+    }
+    alert("Registered Successfully");
+    window.location="./index.html";
+}
+
+async function login(){
+    const email=document.getElementById("email").value;
+    const password=document.getElementById("pass").value;
+    const res=await fetch(API+"/login",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({email,password})
+    });
+    const data=await res.json();
+    localStorage.setItem("token",data.token);
+    window.location="dashboard.html";
+}
+
+
+async function createNote(){
+    const text=document.getElementById("notetext").value;
+    const token=localStorage.getItem("token");
+    await fetch(API+"/notes",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json",
+            "authorization":token
+        },
+        body:JSON.stringify({text})
+    });
+    loadNotes();
+}
+
+async function loadNotes(){
+    const token=localStorage.getItem("token");
+    const res=await fetch(API+"/notes",{
+        headers:{
+            "authorization":token
+        }
+    });
+
+    const notes=await res.json();
+    const ul=document.getElementById("notes");
+    ul.innerHTML="";
+    notes.forEach(n=>{
+        const li=document.createElement("li");
+        li.innerHTML=`
+        ${n.text}
+        <button onclick="deleteNote('${n._id}')">Delete</button>
+    `;
+
+    ul.appendChild(li);
+
+  });
+
+}
+
+
+// DELETE NOTE
+async function deleteNote(id){
+
+  const token = localStorage.getItem("token");
+
+  await fetch(API+"/notes/"+id,{
+    method:"DELETE",
+    headers:{
+      "authorization":token
+    }
+  });
+
+  loadNotes();
+
+}
+
+
+if(document.getElementById("notes")){
+  loadNotes();
+}
+
+
+
+//auth//
+import jwt from "jsonwebtoken";
+
+export default function auth(req,res,next){
+    const token=req.headers.authorization;
+
+    if(!token){
+        res.status(401).json({message:"Token not provided"});
+        return;
+    }
+
+    try{
+        const decoded=jwt.verify(token,"secret123");
+        req.user=decoded;
+        next();
+    }
+
+    catch{
+        res.status(401).json({message:"Invalid Token"});
+    }
+    
+}
+
+
+
+//server.js//
+import express from "express";
+import mongoose from "mongoose";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import cors from "cors";
+
+import auth from "./middleware/auth.js";
+import User from "./models/User.js";
+import Note from "./models/Note.js";
+
+const app = express();
+
+app.use(express.json());
+app.use(cors());
+
+
+mongoose.connect("mongodb://localhost:27017/notesapp")
+.then(() => console.log("MongoDB Connected"));
+
+app.get("/",(req,res) => {
+    res.json({
+        message:"Backend Running"
+    })
+});
+
+
+//Register
+app.post("/register", async (req,res)=>{
+    const existuser=await User.findOne({email: req.body.email});
+    if(existuser){
+        return res.status(400).json({message: "User already exists"});
+    }
+    const hashedPassword=await bcrypt.hash(req.body.password,10);
+    const user=new User({
+        email: req.body.email,
+        password: hashedPassword
+    });
+
+    await user.save();
+    res.json({message: "User Registered"});
+});
+
+//login
+app.post("/login", async (req,res)=>{
+    const user=await User.findOne({email: req.body.email});
+    if(!user){
+        return res.status(400).json({message: "User not found"});
+
+    }
+    const valid=await bcrypt.compare(req.body.password, user.password);
+    if(!valid){
+        return res.status(400).json({message: "Wrong Password"});
+    }
+    const token=jwt.sign(
+        {id:user._id},
+        "secret123"
+    );
+    res.json({token});
+});
+
+//Create Note
+app.post("/notes", auth, async (req,res)=>{
+    const note=new Note({
+        text: req.body.text,
+        userId: req.user.id
+    });
+    const saved=await note.save();
+    res.json(saved);
+
+});
+
+//get all notes
+app.get("/notes",auth,async (req,res)=>{
+    const Notes=await Note.find({
+        userId:req.user.id
+    });
+    res.json(Notes);
+});
+
+//Delete notes
+app.delete("/notes/:id", auth, async (req,res)=>{
+    await Note.findByIdAndDelete(req.params.id);
+    res.json({message:"Note Deleted"})
+});
+
+app.listen(3000, ()=>{
+    console.log("Backend is running on PORT: 3000");
+});
+
+
+
