@@ -1,0 +1,2746 @@
+What is the issue this is from the last project that we were doing
+
+From the console errors in your screenshot, there are two separate problems happening.
+
+1️⃣ Failed to load resource: net::ERR_FILE_NOT_FOUND
+
+This usually happens when the browser cannot find a file such as:
+
+script.js
+
+style.css
+
+or another asset
+
+Example cause in HTML:
+
+<script src="script.js"></script>
+
+But the file structure might actually be:
+
+frontend/
+   js/script.js
+Fix
+
+Make sure the path is correct relative to the HTML file.
+
+Example correct structure:
+
+frontend
+ ├── login.html
+ ├── register.html
+ ├── dashboard.html
+ ├── style.css
+ └── script.js
+
+Then this works:
+
+<script src="script.js"></script>
+2️⃣ ERR_SSL_PROTOCOL_ERROR
+
+This means the browser is trying to connect using HTTPS, but your server is running on HTTP.
+
+Example incorrect API call:
+
+fetch("https://localhost:5000/api/auth/register")
+
+But your Express server runs:
+
+http://localhost:5000
+Fix
+
+Change the fetch URL to:
+
+fetch("http://localhost:5000/api/auth/register")
+
+OR if you are serving frontend from Express (recommended):
+
+const API_BASE = "/api";
+
+Then use:
+
+fetch(API_BASE + "/auth/register")
+3️⃣ Failed to fetch (main error)
+
+This happens because the API request failed, usually due to one of these:
+
+Reason	Fix
+Backend server not running	Run node server.js
+Wrong API URL	Use correct http://localhost:5000/api/...
+HTTPS instead of HTTP	Remove https
+CORS issue	Ensure app.use(cors()) in server
+Fetch from file system	Serve frontend via Express
+4️⃣ Most Likely Cause in Your Case
+
+Since the error shows:
+
+register (script.js:6)
+
+Your fetch probably looks like:
+
+fetch("/api/auth/register")
+
+But you opened the HTML like this:
+
+file:///C:/.../frontend/register.html
+
+When opened from file system, /api/... doesn't exist.
+
+✅ Correct Way to Run This Project
+
+Start backend:
+
+cd backend
+node server.js
+
+Then open:
+
+http://localhost:5000
+
+NOT:
+
+file:///.../register.html
+✔ Quick Checklist
+
+Make sure:
+
+Backend running
+
+node server.js
+
+Open app from browser:
+
+http://localhost:5000
+
+Fetch URL:
+
+const API_BASE = "/api";
+
+💡 If you want, send your script.js line 6 and register.html, and I can pinpoint the exact bug in 10 seconds.
+
+const API="https://localhost:3000";
+
+async function register(){
+    const email=document.getElementById('email').value;
+    const pass=document.getElementById('pass').value;
+    await fetch(API+"/register",{
+        method:"POST",
+        headers:{
+            "Content-Type": "application/json"
+        },
+        body:JSON.stringify({email,pass})
+    });
+    alert("Registered Successfully");
+    window.location("./login.html");
+} app.post("/register", async (req,res)=>{
+    const hashedPassword=await bcrypt.hash(req.body.password,10);
+    const user=new User({
+        email: req.body.email,
+        password: hashedPassword
+    });
+
+    await user.save();
+    res.json({message: "User Registered"});
+});See this is the code of register tell me what is the issue and help me resolve it
+
+There are 3 clear issues in your code. Any one of them can break the request. Let's fix them step-by-step.
+
+1️⃣ Wrong protocol (https instead of http) ⚠️
+
+Your frontend:
+
+const API="https://localhost:3000";
+
+But your Express server runs on HTTP, not HTTPS.
+
+This causes the error:
+
+ERR_SSL_PROTOCOL_ERROR
+Fix
+const API="http://localhost:3000";
+2️⃣ Password field name mismatch ❌
+
+Frontend sends:
+
+body: JSON.stringify({email, pass})
+
+Backend expects:
+
+req.body.password
+
+So req.body.password becomes undefined, which breaks bcrypt.hash.
+
+Fix frontend
+body: JSON.stringify({
+    email,
+    password: pass
+})
+
+OR rename the variable:
+
+const password=document.getElementById('pass').value;
+
+body: JSON.stringify({email,password})
+3️⃣ Wrong redirect syntax ❌
+
+You wrote:
+
+window.location("./login.html");
+
+But window.location is not a function.
+
+Fix
+window.location = "./login.html";
+✅ Correct Frontend Code
+const API="http://localhost:3000";
+
+async function register(){
+
+    const email=document.getElementById('email').value;
+    const password=document.getElementById('pass').value;
+
+    await fetch(API+"/register",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body:JSON.stringify({email,password})
+    });
+
+    alert("Registered Successfully");
+
+    window.location="./login.html";
+}
+4️⃣ Small Backend Safety Improvement
+
+Add validation so server doesn't crash if fields missing.
+
+app.post("/register", async (req,res)=>{
+
+    const {email,password}=req.body;
+
+    if(!email || !password){
+        return res.status(400).json({message:"Missing fields"});
+    }
+
+    const hashedPassword=await bcrypt.hash(password,10);
+
+    const user=new User({
+        email,
+        password:hashedPassword
+    });
+
+    await user.save();
+
+    res.json({message:"User Registered"});
+});
+✔ After Fixing
+
+Run server:
+
+node server.js
+
+Open browser:
+
+http://localhost:3000/register.html
+
+Then register.
+
+⭐ Bonus Tip (Important)
+
+You should also check if the request failed:
+
+const res = await fetch(...)
+
+if(!res.ok){
+   alert("Registration failed")
+   return
+}
+
+If you want, I can also show you 3 very common authentication bugs beginners make in MERN apps so you avoid them early.
+
+In register how to show that already registered
+
+To show “User already registered”, you need two things:
+
+1️⃣ Backend must check if the email already exists
+2️⃣ Frontend must display the error message from the server
+
+1️⃣ Fix Backend (Check Existing User)
+
+Modify your /register route.
+
+app.post("/register", async (req,res)=>{
+
+    const {email,password} = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({email});
+
+    if(existingUser){
+        return res.status(400).json({
+            message:"User already registered"
+        });
+    }
+
+    const hashedPassword = await bcrypt.hash(password,10);
+
+    const user = new User({
+        email,
+        password: hashedPassword
+    });
+
+    await user.save();
+
+    res.json({
+        message:"User registered successfully"
+    });
+});
+
+Now if the email already exists, the server returns:
+
+{
+ "message": "User already registered"
+}
+2️⃣ Fix Frontend (Show Message)
+
+Your current frontend ignores the server response.
+
+Update your register() function:
+
+const API="http://localhost:3000";
+
+async function register(){
+
+    const email=document.getElementById('email').value;
+    const password=document.getElementById('pass').value;
+
+    const res = await fetch(API+"/register",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body:JSON.stringify({email,password})
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+        alert(data.message);   // shows "User already registered"
+        return;
+    }
+
+    alert("Registered Successfully");
+
+    window.location="./login.html";
+}
+3️⃣ What Happens Now
+First Registration
+
+User enters:
+
+test@gmail.com
+
+Server response:
+
+User registered successfully
+Second Registration with Same Email
+
+Server detects existing user:
+
+User already registered
+
+Frontend shows:
+
+Alert: User already registered
+⭐ Even Better UX (Instead of Alert)
+
+You can show the message inside the page.
+
+Example HTML:
+
+<p id="error" style="color:red"></p>
+
+Then in JS:
+
+document.getElementById("error").innerText = data.message;
+
+This looks much more professional.
+
+If you want, I can also show you how to implement login error handling (wrong password, user not found) the same way.
+
+and if we reach on dashboard directly first ask us to login
+
+To make sure users cannot open dashboard.html without logging in, you need to check if a token exists before allowing access.
+
+Since your login stores a token in localStorage, we check that.
+
+1️⃣ Add Check in dashboard.html
+
+At the top of script.js or inside dashboard.html script:
+
+const token = localStorage.getItem("token");
+
+if(!token){
+    alert("Please login first");
+    window.location = "./login.html";
+}
+
+Now if someone tries to open:
+
+http://localhost:3000/dashboard.html
+
+without logging in, they will be redirected to login page.
+
+2️⃣ Example Complete dashboard.html
+<script>
+
+const token = localStorage.getItem("token");
+
+if(!token){
+    alert("Please login first");
+    window.location = "./login.html";
+}
+
+// rest of dashboard code
+
+</script>
+3️⃣ Also Store Token When Logging In
+
+In login() function:
+
+const res = await fetch(API+"/login",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json"
+    },
+    body:JSON.stringify({email,password})
+});
+
+const data = await res.json();
+
+localStorage.setItem("token",data.token);
+
+window.location="./dashboard.html";
+4️⃣ Logout Button (Important)
+
+Add logout so the user can clear the token.
+
+function logout(){
+    localStorage.removeItem("token");
+    window.location="./login.html";
+}
+
+HTML button:
+
+<button onclick="logout()">Logout</button>
+5️⃣ Even More Secure (Backend Protection)
+
+Frontend checks are not enough, so backend must also protect routes.
+
+Example:
+
+app.get("/tasks",authMiddleware,(req,res)=>{
+    // only logged-in users can access
+});
+
+The middleware verifies the JWT token.
+
+🔑 Final Flow
+User opens dashboard
+        ↓
+Check localStorage token
+        ↓
+No token → redirect to login
+Token exists → allow dashboard
+
+✅ Now your app has basic route protection like real web apps.
+
+If you want, I can also show you a clean professional way to protect all pages automatically (like React Router authentication guards) even in plain JavaScript projects.
+
+What are these error that are coming in the first notes app that we made
+
+You’re seeing three different errors, and each one tells something about what’s wrong in the Notes app.
+
+1️⃣ GET http://localhost:3000/notes 404 (Not Found)
+
+Meaning:
+Your frontend is requesting:
+
+GET /notes
+
+But your backend does not have this route.
+
+Example backend routes might be:
+
+app.get("/tasks", ...)
+
+or
+
+app.get("/api/notes", ...)
+Fix
+
+Make sure the route matches exactly.
+
+Example backend:
+
+app.get("/notes", async (req,res)=>{
+    const notes = await Note.find();
+    res.json(notes);
+});
+
+Or update frontend:
+
+fetch("http://localhost:3000/api/notes")
+2️⃣ Unexpected token '<', "<!DOCTYPE"... is not valid JSON
+
+This happens when JavaScript expects JSON but receives HTML instead.
+
+Example:
+
+const data = await res.json();
+
+But the server actually returned something like:
+
+<!DOCTYPE html>
+<html>
+
+That usually means:
+
+the API route is wrong
+
+Express returned an HTML page instead
+
+In your case this happens because:
+
+GET /notes → 404
+
+So Express returns a 404 HTML page, not JSON.
+
+3️⃣ POST http://localhost:3000/notes 401 (Unauthorized)
+
+Meaning:
+Your backend has authentication middleware and the request does not include a token.
+
+Example backend:
+
+app.post("/notes", auth, async(req,res)=>{
+
+But your frontend request probably looks like:
+
+fetch("/notes",{
+   method:"POST"
+})
+
+No token is sent.
+
+Fix
+
+Send the token:
+
+const token = localStorage.getItem("token");
+
+fetch("/notes",{
+   method:"POST",
+   headers:{
+      "Content-Type":"application/json",
+      "authorization":token
+   },
+   body: JSON.stringify({text})
+})
+📊 Summary of Errors
+Error	Cause	Fix
+404 /notes	Route missing	Add /notes route or fix URL
+Unexpected token <	HTML returned instead of JSON	Fix API endpoint
+401 Unauthorized	Token missing	Send token in headers
+⭐ Quick Debug Checklist
+
+Check these in your project:
+
+Backend
+
+Make sure routes exist:
+
+app.get("/notes", ...)
+app.post("/notes", ...)
+Frontend
+
+Make sure fetch URL is correct:
+
+fetch("http://localhost:3000/notes")
+Authentication
+
+Send token:
+
+headers:{
+ "authorization": localStorage.getItem("token")
+}
+
+💡 If you want, send me your notes app server.js + script.js, and I can pinpoint exactly which line is causing this error in under a minute.
+
+//Create Note
+app.post("/notes", auth, async (req,res)=>{
+    const note=new Note({
+        text: req.body.text,
+        userId: req.user.id
+    });
+    const saved=await note.save();
+    res.json(saved);
+
+});
+
+Your backend route looks mostly correct, but the errors you showed earlier happen because of how the frontend is calling it.
+
+Let’s connect the errors with this route.
+
+1️⃣ Why 401 Unauthorized is happening
+
+Your route uses auth middleware:
+
+app.post("/notes", auth, async (req,res)=>{
+
+So every request must include a JWT token.
+
+If the frontend sends:
+
+fetch("/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json"
+    },
+    body:JSON.stringify({text})
+})
+
+Then no token is sent, so the middleware rejects it → 401 Unauthorized.
+
+Fix
+
+Send the token:
+
+const token = localStorage.getItem("token");
+
+await fetch("http://localhost:3000/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json",
+        "authorization": token
+    },
+    body:JSON.stringify({text})
+});
+2️⃣ Why 404 GET /notes happens
+
+You only showed:
+
+app.post("/notes")
+
+But the frontend probably calls:
+
+fetch("/notes")
+
+That is a GET request, but your backend does not have a GET route.
+
+Fix
+
+Add this:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId: req.user.id
+    });
+
+    res.json(notes);
+});
+3️⃣ Why Unexpected token '<' appears
+
+This happens because:
+
+1️⃣ Frontend tries to parse JSON
+
+const data = await res.json();
+
+2️⃣ But backend returned HTML error page (404).
+
+HTML starts with:
+
+<!DOCTYPE html>
+
+So JS throws:
+
+Unexpected token '<'
+
+Once the GET route exists, this error disappears.
+
+4️⃣ Correct Backend (Minimal Notes API)
+// CREATE NOTE
+app.post("/notes", auth, async (req,res)=>{
+    const note=new Note({
+        text: req.body.text,
+        userId: req.user.id
+    });
+
+    const saved=await note.save();
+    res.json(saved);
+});
+
+
+// GET NOTES
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId: req.user.id
+    });
+
+    res.json(notes);
+});
+5️⃣ Correct Frontend Flow
+After login
+localStorage.setItem("token",data.token);
+Create note
+const token = localStorage.getItem("token");
+
+await fetch("http://localhost:3000/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json",
+        "authorization": token
+    },
+    body:JSON.stringify({text})
+});
+Load notes
+const res = await fetch("http://localhost:3000/notes",{
+    headers:{
+        "authorization": localStorage.getItem("token")
+    }
+});
+
+const notes = await res.json();
+⭐ One More Bug to Check
+
+Your middleware must attach the user like this:
+
+req.user = decoded;
+
+Otherwise this line fails:
+
+userId: req.user.id
+
+✅ After adding the GET route + token in headers, all three errors will disappear.
+
+If you want, I can also show you a very clean final version of the Notes app (server + frontend in ~120 lines total) so it works perfectly and is easy to understand.
+
+The console shows 4 different errors, and they are related to your Notes app API. Let’s decode each one and how to fix it.
+
+1️⃣ 404 (Not Found)
+Failed to load resource: the server responded with a status of 404
+Meaning
+
+Your frontend is calling a route that does not exist in the backend.
+
+Example:
+
+Frontend:
+
+fetch("http://localhost:3000/notes")
+
+But backend might have:
+
+app.get("/api/notes", ...)
+
+So the route doesn't match.
+
+Fix
+
+Make sure both match exactly.
+
+Example backend:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({userId:req.user.id});
+    res.json(notes);
+});
+
+OR change frontend:
+
+fetch("http://localhost:3000/api/notes")
+2️⃣ ERR_FILE_NOT_FOUND
+Failed to load resource: net::ERR_FILE_NOT_FOUND
+Meaning
+
+The browser is trying to load a file that doesn't exist.
+
+Usually:
+
+script.js
+
+style.css
+
+wrong path
+
+Example mistake:
+
+<script src="/script.js"></script>
+
+But actual structure:
+
+client/
+   script.js
+   index.html
+Fix
+
+Use correct path:
+
+<script src="script.js"></script>
+3️⃣ 500 (Internal Server Error)
+Failed to load resource: the server responded with a status of 500
+Meaning
+
+Something crashed inside the backend code.
+
+Example causes:
+
+req.body.password undefined
+
+database error
+
+middleware error
+
+incorrect req.user.id
+
+How to find it
+
+Check your terminal running the server.
+
+You will see something like:
+
+TypeError: Cannot read properties of undefined
+
+That tells you the real bug.
+
+4️⃣ Unexpected token '<'
+Unexpected token '<', "<!DOCTYPE"... is not valid JSON
+Meaning
+
+Frontend expected JSON:
+
+const data = await res.json();
+
+But backend returned HTML.
+
+HTML starts with:
+
+<!DOCTYPE html>
+
+This happens when:
+
+API route returns 404 page
+
+server error page
+
+wrong endpoint
+
+Once 404 / 500 errors are fixed, this error disappears.
+
+🔎 Most Likely Problem in Your Notes App
+
+Based on your earlier code, the main missing route is:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId:req.user.id
+    });
+
+    res.json(notes);
+});
+
+Without this route, your frontend request:
+
+fetch("/notes")
+
+will always return 404.
+
+✔ Quick Checklist
+
+Make sure you have:
+
+Backend
+app.post("/notes", auth, ...)
+app.get("/notes", auth, ...)
+Frontend fetch
+fetch("http://localhost:3000/notes",{
+   headers:{
+      authorization: localStorage.getItem("token")
+   }
+})
+Login stores token
+localStorage.setItem("token",data.token)
+⭐ Pro Debug Tip
+
+Open Network tab → click the failed request → check Response.
+
+If you see:
+
+<!DOCTYPE html>
+
+then your API endpoint is wrong.
+
+✅ If you want, send me your full server.js of the notes app, and I can point out the exact line causing the 500 error.
+
+Tell me what is the error this is script.js const API="http://localhost:3000";
+
+async function register(){
+    const email=document.getElementById('email').value;
+    const password=document.getElementById('pass').value;
+    const res=await fetch(API+"/register",{
+        method:"POST",
+        headers:{
+            "Content-Type": "application/json"
+        },
+        body:JSON.stringify({email,password})
+    });
+    const data=await res.json();
+    if(!res.ok){
+        return alert(data.message);
+        return;
+    }
+    alert("Registered Successfully");
+    window.location="./index.html";
+}
+
+async function login(){
+    const email=document.getElementById("email");
+    const password=document.getElementById("pass");
+    const res=await fetch(API+"/login",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({email,password})
+    });
+    const data=await res.json();
+    localStorage.setItem("token",data.token);
+    window.location="dashboard.html";
+}
+
+
+async function createNote(){
+    const text=document.getElementById("notetext").value;
+    const token=localStorage.getItem("token");
+    await fetch(API+"/notes",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json",
+            "authorization":token
+        },
+        body:JSON.stringify({text})
+    });
+    loadNotes();
+}
+
+async function loadNotes(){
+    const token=localStorage.getItem("token");
+    const res=await fetch(API+"/notes",{
+        headers:{
+            "authorization":token
+        }
+    });
+
+    const notes=await res.json();
+    const ul=document.getElementById("notes");
+    ul.innerHTML="";
+    notes.forEach(n=>{
+        const li=document.createElement("li");
+        li.innerHTML=
+        ${n.text}
+        <button onclick="deleteNode('${n._id}')">Delete</button>
+    ;
+
+    ul.appendChild(li);
+
+  });
+
+}
+
+
+// DELETE NOTE
+async function deleteNote(id){
+
+  const token = localStorage.getItem("token");
+
+  await fetch(API+"/notes/"+id,{
+    method:"DELETE",
+    headers:{
+      "authorization":token
+    }
+  });
+
+  loadNotes();
+
+}
+
+
+if(document.getElementById("notes")){
+  loadNotes();
+} and this is server.js import express from "express";
+import mongoose from "mongoose";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import cors from "cors";
+
+import auth from "./middleware/auth.js";
+import User from "./models/User.js";
+import Note from "./models/Note.js";
+
+const app = express();
+
+app.use(express.json());
+app.use(cors());
+
+
+mongoose.connect("mongodb://localhost:27017/notesapp")
+.then(() => console.log("MongoDB Connected"));
+
+app.get("/",(req,res) => {
+    res.json({
+        message:"Backend Running"
+    })
+});
+
+
+//Register
+app.post("/register", async (req,res)=>{
+    const existuser=await User.findOne({email: req.body.email});
+    if(existuser){
+        return res.status(400).json({message: "User already exists"});
+    }
+    const hashedPassword=await bcrypt.hash(req.body.password,10);
+    const user=new User({
+        email: req.body.email,
+        password: hashedPassword
+    });
+
+    await user.save();
+    res.json({message: "User Registered"});
+});
+
+//login
+app.post("/login", async (req,res)=>{
+    const user=await User.findOne({email: req.body.email});
+    if(!user){
+        return res.status(400).json({message: "User not found"});
+
+    }
+    const valid=await bcrypt.compare(req.body.password, user.password);
+    if(!valid){
+        return res.status(400).json({message: "Wrong Password"});
+    }
+    const token=jwt.sign(
+        {id:user._id},
+        "secret123"
+    );
+    res.json({token});
+});
+
+//Create Note
+app.post("/notes", auth, async (req,res)=>{
+    const note=new Note({
+        text: req.body.text,
+        userId: req.user.id
+    });
+    const saved=await note.save();
+    res.json(saved);
+
+});
+
+//get all notes
+app.get("/notes/:id",auth,async (req,res)=>{
+    const Notes=await Note.find({
+        userId:req.user.id
+    });
+    res.json(Notes);
+});
+
+//Delete notes
+app.delete("/notes/:id", auth, async (req,res)=>{
+    await Note.findByIdAndDelete(req.params.id);
+    res.json({message:"Note Deleted"})
+});
+
+app.listen(3000, ()=>{
+    console.log("Backend is running on PORT: 3000");
+});
+
+You actually have 4 real bugs in your code. Some are small but they cause the errors you were seeing (404, 500, Unexpected token <, etc.). I'll go through them clearly.
+
+1️⃣ Wrong login values (major bug)
+
+In login() you are sending the HTML elements instead of their values.
+
+Your code
+const email=document.getElementById("email");
+const password=document.getElementById("pass");
+
+Then you send:
+
+body: JSON.stringify({email,password})
+
+So the server receives:
+
+email = [object HTMLInputElement]
+password = [object HTMLInputElement]
+
+Which breaks authentication.
+
+Fix
+async function login(){
+    const email=document.getElementById("email").value;
+    const password=document.getElementById("pass").value;
+
+    const res=await fetch(API+"/login",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({email,password})
+    });
+
+    const data=await res.json();
+    localStorage.setItem("token",data.token);
+    window.location="dashboard.html";
+}
+2️⃣ Wrong GET route in backend
+
+Your backend route:
+
+app.get("/notes/:id",auth,async (req,res)=>{
+
+But frontend calls:
+
+fetch(API+"/notes")
+
+There is no /notes route, only /notes/:id.
+
+So server returns 404.
+
+Fix backend
+
+Change this:
+
+app.get("/notes/:id",auth,async (req,res)=>{
+
+to:
+
+app.get("/notes",auth,async (req,res)=>{
+
+Full fixed version:
+
+app.get("/notes",auth,async (req,res)=>{
+    const notes=await Note.find({
+        userId:req.user.id
+    });
+
+    res.json(notes);
+});
+3️⃣ Typo in delete button
+
+Your frontend:
+
+<button onclick="deleteNode('${n._id}')">Delete</button>
+
+Function name is wrong.
+
+You created:
+
+async function deleteNote(id)
+Fix
+<button onclick="deleteNote('${n._id}')">Delete</button>
+4️⃣ Bad error handling in register()
+
+This isn't breaking the app but it's messy.
+
+if(!res.ok){
+    return alert(data.message);
+    return;
+}
+
+Second return is useless.
+
+Fix
+if(!res.ok){
+    alert(data.message);
+    return;
+}
+5️⃣ Optional improvement (token format)
+
+Your middleware might expect:
+
+Bearer token
+
+So safer header:
+
+"authorization": "Bearer " + token
+6️⃣ Corrected loadNotes() block
+
+Also change variable name to lowercase for clarity.
+
+async function loadNotes(){
+    const token=localStorage.getItem("token");
+
+    const res=await fetch(API+"/notes",{
+        headers:{
+            "authorization":token
+        }
+    });
+
+    const notes=await res.json();
+
+    const ul=document.getElementById("notes");
+    ul.innerHTML="";
+
+    notes.forEach(n=>{
+        const li=document.createElement("li");
+
+        li.innerHTML=`
+        ${n.text}
+        <button onclick="deleteNote('${n._id}')">Delete</button>
+        `;
+
+        ul.appendChild(li);
+    });
+}
+⭐ Summary of Issues
+Problem	Location	Fix
+Sending HTML element instead of value	login()	use .value
+Wrong backend route	/notes/:id	change to /notes
+Typo in delete function	deleteNode()	change to deleteNote()
+Extra return	register()	remove
+After fixing
+
+Run server again:
+
+node server.js
+
+Then:
+
+Register → Login → Dashboard → Create Notes → Delete Notes
+
+Everything should work.
+
+If you want, I can also show you 3 small improvements that make this notes app look like a real production backend (middleware validation, error handling, folder structure).
+
+fetch(API+"/notes")
+
+Can we fix this in the frontend by providing the id 
+
+Yes, you could technically change the frontend to provide an id, but that is not the correct design for this app. Let me explain why and what the proper fix is.
+
+Why the error happens
+
+Your backend route is:
+
+app.get("/notes/:id", auth, async (req,res)=>{
+
+This route expects a request like:
+
+GET /notes/123
+
+But your frontend calls:
+
+fetch(API+"/notes")
+
+which sends:
+
+GET /notes
+
+So Express cannot find the route → 404 Not Found.
+
+Could you fix it from the frontend?
+
+Technically yes, for example:
+
+const userId = localStorage.getItem("userid");
+
+fetch(API + "/notes/" + userId, {
+    headers:{
+        authorization: token
+    }
+});
+
+But this is unnecessary and bad practice.
+
+Why?
+
+Your backend already gets the user from the JWT token:
+
+userId:req.user.id
+
+So the client should NOT send the id again.
+
+Correct Solution (Recommended)
+
+Change the backend route to:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId:req.user.id
+    });
+
+    res.json(notes);
+});
+
+Now your frontend works correctly:
+
+fetch(API+"/notes")
+
+The JWT token identifies the user, and the server returns only that user's notes.
+
+Why this is better
+Method	Security	Simplicity
+Sending ID from frontend	❌ insecure	❌ unnecessary
+Using JWT (req.user.id)	✅ secure	✅ clean
+
+This is how real production APIs work.
+
+Final correct flow
+Frontend
+fetch(API+"/notes",{
+   headers:{
+      authorization: localStorage.getItem("token")
+   }
+})
+Backend
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({userId:req.user.id});
+    res.json(notes);
+});
+
+✅ This is the clean and correct fix.
+
+If you'd like, I can also show you how to restructure this notes app like a real MERN project (routes, controllers, middleware folders) in about 5 minutes. It will make your backend look much more professional.
+
+app.get("/notes",auth,async (req,res)=>{ const notes\=await Note.find({ userId:req.user.id }); res.json(notes); });
+
+How it will get the user in the req
+
+Good question — this is the core idea behind authentication middleware.
+req.user does not magically exist. It is added by the auth middleware.
+
+Let’s walk through the flow.
+
+1️⃣ Frontend sends the token
+
+After login you store the token:
+
+localStorage.setItem("token", data.token);
+
+When calling protected routes:
+
+fetch(API + "/notes", {
+  headers: {
+    authorization: localStorage.getItem("token")
+  }
+});
+
+So the request sent to the server looks like:
+
+GET /notes
+authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+2️⃣ Request hits the auth middleware first
+
+Your route:
+
+app.get("/notes", auth, async (req,res)=>{
+
+Because auth is before the controller, Express executes:
+
+request → auth middleware → route handler
+3️⃣ The middleware verifies the token
+
+Typical auth.js looks like this:
+
+import jwt from "jsonwebtoken";
+
+export default function auth(req,res,next){
+
+  const token = req.headers.authorization;
+
+  if(!token){
+    return res.status(401).json({message:"No token"});
+  }
+
+  try{
+    const decoded = jwt.verify(token,"secret123");
+
+    req.user = decoded;   // 👈 user is attached to request
+
+    next();
+
+  }catch{
+    res.status(401).json({message:"Invalid token"});
+  }
+}
+4️⃣ What is inside the token?
+
+When logging in you created the token:
+
+const token = jwt.sign(
+  { id: user._id },
+  "secret123"
+);
+
+So the payload is:
+
+{
+  "id": "65bcd92e..."
+}
+
+After verification:
+
+const decoded = jwt.verify(token,"secret123");
+
+decoded becomes:
+
+{ id: "65bcd92e..." }
+
+Then middleware does:
+
+req.user = decoded;
+
+So now:
+
+req.user.id = "65bcd92e..."
+5️⃣ Now the route can use it
+
+Your route:
+
+app.get("/notes", auth, async (req,res)=>{
+  const notes = await Note.find({
+    userId: req.user.id
+  });
+
+  res.json(notes);
+});
+
+So the backend automatically fetches only notes belonging to that user.
+
+6️⃣ Full request flow
+Frontend
+   ↓
+Send token in header
+   ↓
+Express receives request
+   ↓
+auth middleware runs
+   ↓
+JWT verified
+   ↓
+req.user = decoded token
+   ↓
+Route handler runs
+   ↓
+req.user.id used to query DB
+7️⃣ Example real request
+GET /notes
+authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+Middleware decodes token → attaches user → route accesses it.
+
+⭐ Important thing to remember
+
+The frontend never sends the user id manually.
+
+Instead:
+
+token → middleware → req.user → database query
+
+This is the standard authentication pattern used in MERN apps.
+
+If you want, I can also show you how JWT actually looks internally (header, payload, signature) and how to decode it — this makes authentication much easier to understand.
+
+ You have the code for everything , just tell me hoew to resolve the issues
+
+From your screenshot and the code you shared earlier, the 500 error on /notes is happening because of a mismatch between your JWT payload and how you read it in the route.
+
+I'll show you the exact fixes you need.
+
+1️⃣ Fix the JWT payload mismatch (MAIN ERROR)
+
+In your login route you create the token like this:
+
+const token = jwt.sign(
+  { id: user._id },
+  "secret123"
+);
+
+So the token payload contains:
+
+{ "id": "user_id_here" }
+
+But in your create note route you wrote:
+
+userId: req.user.id
+
+This only works if your middleware sets req.user.id correctly.
+
+Most likely your middleware currently does something like:
+
+req.user = decoded;
+
+which means:
+
+req.user = { id: "123" }
+
+So accessing req.user.id works.
+
+BUT many beginners accidentally use:
+
+req.user = decoded.id
+
+which makes:
+
+req.user = "123"
+
+and then this crashes:
+
+req.user.id
+
+because req.user is just a string.
+
+✅ Fix your auth middleware
+
+Make sure your middleware/auth.js looks like this:
+
+import jwt from "jsonwebtoken";
+
+export default function auth(req,res,next){
+
+  const token = req.headers.authorization;
+
+  if(!token){
+    return res.status(401).json({message:"No token"});
+  }
+
+  try{
+
+    const decoded = jwt.verify(token,"secret123");
+
+    req.user = decoded;   // IMPORTANT
+
+    next();
+
+  }catch{
+    res.status(401).json({message:"Invalid token"});
+  }
+}
+
+Now this works:
+
+req.user.id
+2️⃣ Fix the GET route
+
+Your current route:
+
+app.get("/notes/:id",auth,async (req,res)=>{
+
+But frontend calls:
+
+GET /notes
+
+Change it to:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId:req.user.id
+    });
+
+    res.json(notes);
+});
+3️⃣ Fix the delete button typo
+
+In script.js:
+
+Wrong:
+
+<button onclick="deleteNode('${n._id}')">
+
+Correct:
+
+<button onclick="deleteNote('${n._id}')">
+4️⃣ Fix login request (IMPORTANT)
+
+Your login function currently sends the input element instead of value.
+
+Wrong:
+
+const email=document.getElementById("email");
+const password=document.getElementById("pass");
+
+Correct:
+
+const email=document.getElementById("email").value;
+const password=document.getElementById("pass").value;
+5️⃣ Why you saw Unexpected token '<'
+
+When /notes crashes (500 error), Express returns an HTML error page like:
+
+<!DOCTYPE html>
+
+Your frontend tries to parse it:
+
+await res.json()
+
+So the browser throws:
+
+Unexpected token '<'
+
+Once the 500 error is fixed, this disappears automatically.
+
+6️⃣ Ignore these errors
+
+These are Chrome extension errors, not from your app:
+
+chrome-extension://...
+JobCopilot
+contentScript.js
+
+They are harmless.
+
+✅ After fixing
+
+Restart server:
+
+node server.js
+
+Then test:
+
+Register
+Login
+Create Note
+Load Notes
+Delete Note
+
+Everything should work.
+
+⭐ If you want, I can also show you a clean final version of this Notes App (server + frontend in ~120 lines total) so you can compare and avoid these bugs in the future.
+import jwt from "jsonwebtoken";
+
+export default function auth(req,res,next){
+    const token=req.headers.authorization;
+
+    if(!token){
+        res.status(401).json({message:"Token not provided"});
+    }
+
+    try{
+        const decoded=jwt.verify(token,"secret123");
+        req.user=decoded;
+        next();
+    }
+
+    catch{
+        res.status(401).json({message:"Invalid Token"});
+    }
+    
+}Take my auth code and tell me now what is the issue
+
+Your auth middleware is almost correct, but there is one important bug that can cause unexpected behavior.
+
+❌ Problem in your code
+if(!token){
+    res.status(401).json({message:"Token not provided"});
+}
+
+You did not return after sending the response.
+
+So the code continues executing and reaches:
+
+jwt.verify(token,"secret123");
+
+But token is undefined.
+
+This can cause a 500 error.
+
+✅ Correct version
+
+You must stop execution using return.
+
+import jwt from "jsonwebtoken";
+
+export default function auth(req,res,next){
+
+    const token = req.headers.authorization;
+
+    if(!token){
+        return res.status(401).json({
+            message:"Token not provided"
+        });
+    }
+
+    try{
+
+        const decoded = jwt.verify(token,"secret123");
+
+        req.user = decoded;
+
+        next();
+
+    }
+    catch(err){
+        return res.status(401).json({
+            message:"Invalid Token"
+        });
+    }
+
+}
+⚠️ Why this matters
+
+Without return, Express might try to:
+
+1️⃣ send a response
+2️⃣ continue execution
+3️⃣ throw errors later
+
+Which leads to things like:
+
+500 Internal Server Error
+Unexpected token '<'
+🧠 Another improvement (recommended)
+
+Sometimes tokens come as:
+
+Authorization: Bearer eyJhbGciOiJIUzI1Ni...
+
+So a safer version is:
+
+const token = req.headers.authorization?.split(" ")[1];
+
+Example full version:
+
+export default function auth(req,res,next){
+
+    const header = req.headers.authorization;
+
+    if(!header){
+        return res.status(401).json({message:"Token not provided"});
+    }
+
+    const token = header.split(" ")[1] || header;
+
+    try{
+        const decoded = jwt.verify(token,"secret123");
+        req.user = decoded;
+        next();
+    }
+    catch(err){
+        return res.status(401).json({message:"Invalid Token"});
+    }
+
+}
+✅ After fixing
+
+Restart server:
+
+node server.js
+
+Then test:
+
+Login → Dashboard → Load Notes
+
+The 500 error should disappear.
+
+💡 If you'd like, I can also show you one more bug that still exists in your notes app backend that will break delete operations later.
+
+
+1️⃣ Failed to load resource: net::ERR_FILE_NOT_FOUND
+
+This usually happens when the browser cannot find a file such as:
+
+script.js
+
+style.css
+
+or another asset
+
+Example cause in HTML:
+
+<script src="script.js"></script>
+
+But the file structure might actually be:
+
+frontend/
+   js/script.js
+Fix
+
+Make sure the path is correct relative to the HTML file.
+
+Example correct structure:
+
+frontend
+ ├── login.html
+ ├── register.html
+ ├── dashboard.html
+ ├── style.css
+ └── script.js
+
+Then this works:
+
+<script src="script.js"></script>
+2️⃣ ERR_SSL_PROTOCOL_ERROR
+
+This means the browser is trying to connect using HTTPS, but your server is running on HTTP.
+
+Example incorrect API call:
+
+fetch("https://localhost:5000/api/auth/register")
+
+But your Express server runs:
+
+http://localhost:5000
+Fix
+
+Change the fetch URL to:
+
+fetch("http://localhost:5000/api/auth/register")
+
+OR if you are serving frontend from Express (recommended):
+
+const API_BASE = "/api";
+
+Then use:
+
+fetch(API_BASE + "/auth/register")
+3️⃣ Failed to fetch (main error)
+
+This happens because the API request failed, usually due to one of these:
+
+Reason	Fix
+Backend server not running	Run node server.js
+Wrong API URL	Use correct http://localhost:5000/api/...
+HTTPS instead of HTTP	Remove https
+CORS issue	Ensure app.use(cors()) in server
+Fetch from file system	Serve frontend via Express
+4️⃣ Most Likely Cause in Your Case
+
+Since the error shows:
+
+register (script.js:6)
+
+Your fetch probably looks like:
+
+fetch("/api/auth/register")
+
+But you opened the HTML like this:
+
+file:///C:/.../frontend/register.html
+
+When opened from file system, /api/... doesn't exist.
+
+✅ Correct Way to Run This Project
+
+Start backend:
+
+cd backend
+node server.js
+
+Then open:
+
+http://localhost:5000
+
+NOT:
+
+file:///.../register.html
+✔ Quick Checklist
+
+Make sure:
+
+Backend running
+
+node server.js
+
+Open app from browser:
+
+http://localhost:5000
+
+Fetch URL:
+
+const API_BASE = "/api";
+
+
+
+1️⃣ Wrong protocol (https instead of http) ⚠️
+
+Your frontend:
+
+const API="https://localhost:3000";
+
+But your Express server runs on HTTP, not HTTPS.
+
+This causes the error:
+
+ERR_SSL_PROTOCOL_ERROR
+Fix
+const API="http://localhost:3000";
+2️⃣ Password field name mismatch ❌
+
+Frontend sends:
+
+body: JSON.stringify({email, pass})
+
+Backend expects:
+
+req.body.password
+
+So req.body.password becomes undefined, which breaks bcrypt.hash.
+
+Fix frontend
+body: JSON.stringify({
+    email,
+    password: pass
+})
+
+OR rename the variable:
+
+const password=document.getElementById('pass').value;
+
+body: JSON.stringify({email,password})
+3️⃣ Wrong redirect syntax ❌
+
+You wrote:
+
+window.location("./login.html");
+
+But window.location is not a function.
+
+Fix
+window.location = "./login.html";
+✅ Correct Frontend Code
+const API="http://localhost:3000";
+
+async function register(){
+
+    const email=document.getElementById('email').value;
+    const password=document.getElementById('pass').value;
+
+    await fetch(API+"/register",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body:JSON.stringify({email,password})
+    });
+
+    alert("Registered Successfully");
+
+    window.location="./login.html";
+}
+4️⃣ Small Backend Safety Improvement
+
+Add validation so server doesn't crash if fields missing.
+
+app.post("/register", async (req,res)=>{
+
+    const {email,password}=req.body;
+
+    if(!email || !password){
+        return res.status(400).json({message:"Missing fields"});
+    }
+
+    const hashedPassword=await bcrypt.hash(password,10);
+
+    const user=new User({
+        email,
+        password:hashedPassword
+    });
+
+    await user.save();
+
+    res.json({message:"User Registered"});
+});
+✔ After Fixing
+
+Run server:
+
+node server.js
+
+Open browser:
+
+http://localhost:3000/register.html
+
+Then register.
+
+⭐ Bonus Tip (Important)
+
+You should also check if the request failed:
+
+const res = await fetch(...)
+
+if(!res.ok){
+   alert("Registration failed")
+   return
+}
+
+If you want, I can also show you 3 very common authentication bugs beginners make in MERN apps so you avoid them early.
+
+1️⃣ Why 401 Unauthorized is happening
+
+Your route uses auth middleware:
+
+app.post("/notes", auth, async (req,res)=>{
+
+So every request must include a JWT token.
+
+If the frontend sends:
+
+fetch("/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json"
+    },
+    body:JSON.stringify({text})
+})
+
+Then no token is sent, so the middleware rejects it → 401 Unauthorized.
+
+Fix
+
+Send the token:
+
+const token = localStorage.getItem("token");
+
+await fetch("http://localhost:3000/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json",
+        "authorization": token
+    },
+    body:JSON.stringify({text})
+});
+2️⃣ Why 404 GET /notes happens
+
+You only showed:
+
+app.post("/notes")
+
+But the frontend probably calls:
+
+fetch("/notes")
+
+That is a GET request, but your backend does not have a GET route.
+
+Fix
+
+Add this:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId: req.user.id
+    });
+
+    res.json(notes);
+});
+3️⃣ Why Unexpected token '<' appears
+
+This happens because:
+
+1️⃣ Frontend tries to parse JSON
+
+const data = await res.json();
+
+2️⃣ But backend returned HTML error page (404).
+
+HTML starts with:
+
+<!DOCTYPE html>
+
+So JS throws:
+
+Unexpected token '<'
+
+Once the GET route exists, this error disappears.
+
+4️⃣ Correct Backend (Minimal Notes API)
+// CREATE NOTE
+app.post("/notes", auth, async (req,res)=>{
+    const note=new Note({
+        text: req.body.text,
+        userId: req.user.id
+    });
+
+    const saved=await note.save();
+    res.json(saved);
+});
+
+
+// GET NOTES
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId: req.user.id
+    });
+
+    res.json(notes);
+});
+5️⃣ Correct Frontend Flow
+After login
+localStorage.setItem("token",data.token);
+Create note
+const token = localStorage.getItem("token");
+
+await fetch("http://localhost:3000/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json",
+        "authorization": token
+    },
+    body:JSON.stringify({text})
+});
+Load notes
+const res = await fetch("http://localhost:3000/notes",{
+    headers:{
+        "authorization": localStorage.getItem("token")
+    }
+});
+
+const notes = await res.json();
+⭐ One More Bug to Check
+
+Your middleware must attach the user like this:
+
+req.user = decoded;
+
+Otherwise this line fails:
+
+userId: req.user.id
+
+✅ After adding the GET route + token in headers, all three errors will disappear.
+
+
+
+
+1️⃣ Why 401 Unauthorized is happening
+
+Your route uses auth middleware:
+
+app.post("/notes", auth, async (req,res)=>{
+
+So every request must include a JWT token.
+
+If the frontend sends:
+
+fetch("/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json"
+    },
+    body:JSON.stringify({text})
+})
+
+Then no token is sent, so the middleware rejects it → 401 Unauthorized.
+
+Fix
+
+Send the token:
+
+const token = localStorage.getItem("token");
+
+await fetch("http://localhost:3000/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json",
+        "authorization": token
+    },
+    body:JSON.stringify({text})
+});
+2️⃣ Why 404 GET /notes happens
+
+You only showed:
+
+app.post("/notes")
+
+But the frontend probably calls:
+
+fetch("/notes")
+
+That is a GET request, but your backend does not have a GET route.
+
+Fix
+
+Add this:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId: req.user.id
+    });
+
+    res.json(notes);
+});
+3️⃣ Why Unexpected token '<' appears
+
+This happens because:
+
+1️⃣ Frontend tries to parse JSON
+
+const data = await res.json();
+
+2️⃣ But backend returned HTML error page (404).
+
+HTML starts with:
+
+<!DOCTYPE html>
+
+So JS throws:
+
+Unexpected token '<'
+
+Once the GET route exists, this error disappears.
+
+4️⃣ Correct Backend (Minimal Notes API)
+// CREATE NOTE
+app.post("/notes", auth, async (req,res)=>{
+    const note=new Note({
+        text: req.body.text,
+        userId: req.user.id
+    });
+
+    const saved=await note.save();
+    res.json(saved);
+});
+
+
+// GET NOTES
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId: req.user.id
+    });
+
+    res.json(notes);
+});
+5️⃣ Correct Frontend Flow
+After login
+localStorage.setItem("token",data.token);
+Create note
+const token = localStorage.getItem("token");
+
+await fetch("http://localhost:3000/notes",{
+    method:"POST",
+    headers:{
+        "Content-Type":"application/json",
+        "authorization": token
+    },
+    body:JSON.stringify({text})
+});
+Load notes
+const res = await fetch("http://localhost:3000/notes",{
+    headers:{
+        "authorization": localStorage.getItem("token")
+    }
+});
+
+const notes = await res.json();
+⭐ One More Bug to Check
+
+Your middleware must attach the user like this:
+
+req.user = decoded;
+
+Otherwise this line fails:
+
+userId: req.user.id
+
+✅ After adding the GET route + token in headers, all three errors will disappear.
+
+
+
+1️⃣ 404 (Not Found)
+Failed to load resource: the server responded with a status of 404
+Meaning
+
+Your frontend is calling a route that does not exist in the backend.
+
+Example:
+
+Frontend:
+
+fetch("http://localhost:3000/notes")
+
+But backend might have:
+
+app.get("/api/notes", ...)
+
+So the route doesn't match.
+
+Fix
+
+Make sure both match exactly.
+
+Example backend:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({userId:req.user.id});
+    res.json(notes);
+});
+
+OR change frontend:
+
+fetch("http://localhost:3000/api/notes")
+2️⃣ ERR_FILE_NOT_FOUND
+Failed to load resource: net::ERR_FILE_NOT_FOUND
+Meaning
+
+The browser is trying to load a file that doesn't exist.
+
+Usually:
+
+script.js
+
+style.css
+
+wrong path
+
+Example mistake:
+
+<script src="/script.js"></script>
+
+But actual structure:
+
+client/
+   script.js
+   index.html
+Fix
+
+Use correct path:
+
+<script src="script.js"></script>
+3️⃣ 500 (Internal Server Error)
+Failed to load resource: the server responded with a status of 500
+Meaning
+
+Something crashed inside the backend code.
+
+Example causes:
+
+req.body.password undefined
+
+database error
+
+middleware error
+
+incorrect req.user.id
+
+How to find it
+
+Check your terminal running the server.
+
+You will see something like:
+
+TypeError: Cannot read properties of undefined
+
+That tells you the real bug.
+
+4️⃣ Unexpected token '<'
+Unexpected token '<', "<!DOCTYPE"... is not valid JSON
+Meaning
+
+Frontend expected JSON:
+
+const data = await res.json();
+
+But backend returned HTML.
+
+HTML starts with:
+
+<!DOCTYPE html>
+
+This happens when:
+
+API route returns 404 page
+
+server error page
+
+wrong endpoint
+
+Once 404 / 500 errors are fixed, this error disappears.
+
+🔎 Most Likely Problem in Your Notes App
+
+Based on your earlier code, the main missing route is:
+
+app.get("/notes", auth, async (req,res)=>{
+    const notes = await Note.find({
+        userId:req.user.id
+    });
+
+    res.json(notes);
+});
+
+Without this route, your frontend request:
+
+fetch("/notes")
+
+will always return 404.
+
+✔ Quick Checklist
+
+Make sure you have:
+
+Backend
+app.post("/notes", auth, ...)
+app.get("/notes", auth, ...)
+Frontend fetch
+fetch("http://localhost:3000/notes",{
+   headers:{
+      authorization: localStorage.getItem("token")
+   }
+})
+Login stores token
+localStorage.setItem("token",data.token)
+⭐ Pro Debug Tip
+
+Open Network tab → click the failed request → check Response.
+
+If you see:
+
+<!DOCTYPE html>
+
+then your API endpoint is wrong.
+
+✅ If you want, send me your full server.js of the notes app, and I can point out the exact line causing the 500 error.
+
+Tell me what is the error this is script.js const API="http://localhost:3000";
+
+async function register(){
+    const email=document.getElementById('email').value;
+    const password=document.getElementById('pass').value;
+    const res=await fetch(API+"/register",{
+        method:"POST",
+        headers:{
+            "Content-Type": "application/json"
+        },
+        body:JSON.stringify({email,password})
+    });
+    const data=await res.json();
+    if(!res.ok){
+        return alert(data.message);
+        return;
+    }
+    alert("Registered Successfully");
+    window.location="./index.html";
+}
+
+async function login(){
+    const email=document.getElementById("email");
+    const password=document.getElementById("pass");
+    const res=await fetch(API+"/login",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({email,password})
+    });
+    const data=await res.json();
+    localStorage.setItem("token",data.token);
+    window.location="dashboard.html";
+}
+
+
+async function createNote(){
+    const text=document.getElementById("notetext").value;
+    const token=localStorage.getItem("token");
+    await fetch(API+"/notes",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json",
+            "authorization":token
+        },
+        body:JSON.stringify({text})
+    });
+    loadNotes();
+}
+
+async function loadNotes(){
+    const token=localStorage.getItem("token");
+    const res=await fetch(API+"/notes",{
+        headers:{
+            "authorization":token
+        }
+    });
+
+    const notes=await res.json();
+    const ul=document.getElementById("notes");
+    ul.innerHTML="";
+    notes.forEach(n=>{
+        const li=document.createElement("li");
+        li.innerHTML=
+        ${n.text}
+        <button onclick="deleteNode('${n._id}')">Delete</button>
+    ;
+
+    ul.appendChild(li);
+
+  });
+
+}
+
+
+// DELETE NOTE
+async function deleteNote(id){
+
+  const token = localStorage.getItem("token");
+
+  await fetch(API+"/notes/"+id,{
+    method:"DELETE",
+    headers:{
+      "authorization":token
+    }
+  });
+
+  loadNotes();
+
+}
+
+
+if(document.getElementById("notes")){
+  loadNotes();
+} and this is server.js import express from "express";
+import mongoose from "mongoose";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import cors from "cors";
+
+import auth from "./middleware/auth.js";
+import User from "./models/User.js";
+import Note from "./models/Note.js";
+
+const app = express();
+
+app.use(express.json());
+app.use(cors());
+
+
+mongoose.connect("mongodb://localhost:27017/notesapp")
+.then(() => console.log("MongoDB Connected"));
+
+app.get("/",(req,res) => {
+    res.json({
+        message:"Backend Running"
+    })
+});
+
+
+//Register
+app.post("/register", async (req,res)=>{
+    const existuser=await User.findOne({email: req.body.email});
+    if(existuser){
+        return res.status(400).json({message: "User already exists"});
+    }
+    const hashedPassword=await bcrypt.hash(req.body.password,10);
+    const user=new User({
+        email: req.body.email,
+        password: hashedPassword
+    });
+
+    await user.save();
+    res.json({message: "User Registered"});
+});
+
+//login
+app.post("/login", async (req,res)=>{
+    const user=await User.findOne({email: req.body.email});
+    if(!user){
+        return res.status(400).json({message: "User not found"});
+
+    }
+    const valid=await bcrypt.compare(req.body.password, user.password);
+    if(!valid){
+        return res.status(400).json({message: "Wrong Password"});
+    }
+    const token=jwt.sign(
+        {id:user._id},
+        "secret123"
+    );
+    res.json({token});
+});
+
+//Create Note
+app.post("/notes", auth, async (req,res)=>{
+    const note=new Note({
+        text: req.body.text,
+        userId: req.user.id
+    });
+    const saved=await note.save();
+    res.json(saved);
+
+});
+
+//get all notes
+app.get("/notes/:id",auth,async (req,res)=>{
+    const Notes=await Note.find({
+        userId:req.user.id
+    });
+    res.json(Notes);
+});
+
+//Delete notes
+app.delete("/notes/:id", auth, async (req,res)=>{
+    await Note.findByIdAndDelete(req.params.id);
+    res.json({message:"Note Deleted"})
+});
+
+app.listen(3000, ()=>{
+    console.log("Backend is running on PORT: 3000");
+});
+
+You actually have 4 real bugs in your code. Some are small but they cause the errors you were seeing (404, 500, Unexpected token <, etc.). I'll go through them clearly.
+
+1️⃣ Wrong login values (major bug)
+
+In login() you are sending the HTML elements instead of their values.
+
+Your code
+const email=document.getElementById("email");
+const password=document.getElementById("pass");
+
+Then you send:
+
+body: JSON.stringify({email,password})
+
+So the server receives:
+
+email = [object HTMLInputElement]
+password = [object HTMLInputElement]
+
+Which breaks authentication.
+
+Fix
+async function login(){
+    const email=document.getElementById("email").value;
+    const password=document.getElementById("pass").value;
+
+    const res=await fetch(API+"/login",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({email,password})
+    });
+
+    const data=await res.json();
+    localStorage.setItem("token",data.token);
+    window.location="dashboard.html";
+}
+2️⃣ Wrong GET route in backend
+
+Your backend route:
+
+app.get("/notes/:id",auth,async (req,res)=>{
+
+But frontend calls:
+
+fetch(API+"/notes")
+
+There is no /notes route, only /notes/:id.
+
+So server returns 404.
+
+Fix backend
+
+Change this:
+
+app.get("/notes/:id",auth,async (req,res)=>{
+
+to:
+
+app.get("/notes",auth,async (req,res)=>{
+
+Full fixed version:
+
+app.get("/notes",auth,async (req,res)=>{
+    const notes=await Note.find({
+        userId:req.user.id
+    });
+
+    res.json(notes);
+});
+3️⃣ Typo in delete button
+
+Your frontend:
+
+<button onclick="deleteNode('${n._id}')">Delete</button>
+
+Function name is wrong.
+
+You created:
+
+async function deleteNote(id)
+Fix
+<button onclick="deleteNote('${n._id}')">Delete</button>
+4️⃣ Bad error handling in register()
+
+This isn't breaking the app but it's messy.
+
+if(!res.ok){
+    return alert(data.message);
+    return;
+}
+
+Second return is useless.
+
+Fix
+if(!res.ok){
+    alert(data.message);
+    return;
+}
+5️⃣ Optional improvement (token format)
+
+Your middleware might expect:
+
+Bearer token
+
+So safer header:
+
+"authorization": "Bearer " + token
+6️⃣ Corrected loadNotes() block
+
+Also change variable name to lowercase for clarity.
+
+async function loadNotes(){
+    const token=localStorage.getItem("token");
+
+    const res=await fetch(API+"/notes",{
+        headers:{
+            "authorization":token
+        }
+    });
+
+    const notes=await res.json();
+
+    const ul=document.getElementById("notes");
+    ul.innerHTML="";
+
+    notes.forEach(n=>{
+        const li=document.createElement("li");
+
+        li.innerHTML=`
+        ${n.text}
+        <button onclick="deleteNote('${n._id}')">Delete</button>
+        `;
+
+        ul.appendChild(li);
+    });
+}
+⭐ Summary of Issues
+Problem	Location	Fix
+Sending HTML element instead of value	login()	use .value
+Wrong backend route	/notes/:id	change to /notes
+Typo in delete function	deleteNode()	change to deleteNote()
+Extra return	register()	remove
+After fixing
+
+Run server again:
+
+node server.js
+
+Then:
+
+Register → Login → Dashboard → Create Notes → Delete Notes
+
+Everything should work.
+
+If you want, I can also show you 3 small improvements that make this notes app look like a real production backend (middleware validation, error handling, folder structure).
